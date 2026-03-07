@@ -41,6 +41,6 @@ typedef enum {
  * @brief  Receives a file using the YMODEM protocol.
  * @return YM_OK on success, or an error code.
  */
-YMODEM_Status YMODEM_Receive(void);
+uint32_t YMODEM_Receive(void);
 
 #endif // YMODEM_H

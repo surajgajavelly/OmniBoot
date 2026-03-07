@@ -19,9 +19,11 @@ uint16_t YMODEM_CalculateCRC(uint8_t *data, uint32_t len) {
     return crc;
 }
 
-YMODEM_Status YMODEM_Receive(void) {
+/* Updated return type to uint32_t to report file size */
+uint32_t YMODEM_Receive(void) {
     uint8_t packet_data[1024 + 4]; 
     uint32_t current_address = APP_START_ADDRESS;
+    uint32_t total_received_size = 0; // NEW: Track total bytes written
     uint8_t expected_pkt = 0;
     
     // 1. Prepare Flash (Erase enough sectors for a standard app)
@@ -44,7 +46,8 @@ YMODEM_Status YMODEM_Receive(void) {
         
         if (head == 0x04) { // EOT (End of Transmission)
             UART2_Write(0x06); // ACK EOT
-            return YM_OK; 
+            for(volatile int i = 0; i < 5000000; i++);
+            return total_received_size; // SUCCESS: Return total bytes
         } 
 
         uint32_t data_size = (head == 0x02) ? 1024 : 128;
@@ -83,7 +86,7 @@ YMODEM_Status YMODEM_Receive(void) {
 
             if (is_empty) {
                 UART2_Write(0x06); // ACK end
-                return YM_OK;
+                return total_received_size; // Return size (will be 0 if only session end)
             } else {
                 // Filename Packet 0 - Start of Session
                 UART2_Write(0x06); // ACK the header
@@ -92,7 +95,7 @@ YMODEM_Status YMODEM_Receive(void) {
                 for(volatile int i=0; i<800000; i++); 
                 while (UART2_Read(10) != -1); // Clear any line noise
                 
-                UART2_Write(0x43); // Send 'C' to request Packet 1
+                UART2_Write(0x43); // Send 'C' for Packet 1
                 expected_pkt = 1; 
                 continue;
             }
@@ -102,6 +105,7 @@ YMODEM_Status YMODEM_Receive(void) {
         else if (packet_data[0] == expected_pkt) {
             Flash_Write(current_address, &packet_data[2], data_size);
             current_address += data_size;
+            total_received_size += data_size; // NEW: Accumulate size
             
             UART2_Write(0x06); // ACK
             expected_pkt++;
