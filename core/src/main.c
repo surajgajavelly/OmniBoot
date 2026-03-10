@@ -10,31 +10,42 @@
 #define APP_START_ADDRESS 0x08004000
 #define SCB_VTOR (*(volatile uint32_t *)0xE000ED08)
 
-static inline void __set_MSP(uint32_t topOfMainStack) {
-    __asm__ volatile ("MSR msp, %0" : : "r" (topOfMainStack) : );
-}
-
 void Bootloader_Update(void);
 void Bootloader_Jump(void);
 
-// Helper to see the CRC Signature in Hex
-void UART_PrintHex(uint32_t val) {
+/* Set the value of the MSP register */
+static inline void __set_MSP(uint32_t topOfMainStack)
+{
+    __asm__ volatile ("MSR msp, %0" : : "r" (topOfMainStack) : );
+}
+
+/* Print a 32-bit value in hex format */
+void UART_PrintHex(uint32_t val)
+{
     char hex_chars[] = "0123456789ABCDEF";
-    for (int i = 7; i >= 0; i--) {
+    for (int i = 7; i >= 0; i--)
+    {
         UART2_Write(hex_chars[(val >> (i * 4)) & 0x0F]);
     }
 }
 
-void UART_Print(char *msg) {
-    while (*msg) UART2_Write(*msg++);
+/* Print a string to the UART*/
+void UART_Print(char *msg)
+{
+    while (*msg)
+    {
+        UART2_Write(*msg++);
+    }
 }
 
-int main(void) {
+/* Main function */
+int main(void)
+{
     RCC_Init();
     SysTick_Init(180000); 
     GPIO_Init();
     UART2_Init();
-    CRC_Init(); // <--- Enable the CRC Peripheral Clock
+    CRC_Init();
 
     UART_Print("\r\n============================\r\n");
     UART_Print(" OmniBoot v1.0 - Secure\r\n");
@@ -51,8 +62,10 @@ int main(void) {
     while (1);
 }
 
-uint32_t downloaded_size = 0;
 
+uint32_t downloaded_size = 0;   // Global variable to hold the size of the downloaded firmware
+
+/* Update the bootloader */
 void Bootloader_Update(void) {
     // YMODEM_Receive returns the uint32_t size (total bytes)
     downloaded_size = YMODEM_Receive();
@@ -67,30 +80,31 @@ void Bootloader_Update(void) {
         
         uint32_t *app_ptr = (uint32_t *)APP_START_ADDRESS;
         
-        /* * USE YOUR DRIVER: CRC_Calculate(pointer, word_count)
-         * Since downloaded_size is in bytes, we divide by 4 
-         * to get the number of 32-bit words.
-         */
+        // Calculate CRC32 of the downloaded firmware
         uint32_t final_checksum = CRC_Calculate(app_ptr, (downloaded_size / 4));
         
         UART_Print("DONE\r\n[INFO] App Signature: 0x");
         UART_PrintHex(final_checksum);
         UART_Print("\r\n");
         
-        // Peace treaty delay
+        //
         for(volatile int i=0; i<8000000; i++); 
         
         Bootloader_Jump(); 
-    } else {
+    }
+    else
+    {
         UART_Print("\r\n[FAIL] Transfer Error.\r\n");
     }
 }
 
-void Bootloader_Jump(void) {
+void Bootloader_Jump(void)
+{
     uint32_t app_msp = *(volatile uint32_t*)APP_START_ADDRESS;
     uint32_t app_reset_handler = *(volatile uint32_t*)(APP_START_ADDRESS + 4);
     
-    if (app_msp < 0x20000000 || app_msp > 0x20020000) {
+    if (app_msp < 0x20000000 || app_msp > 0x20020000)
+    {
         UART_Print("[HALT] No Valid Firmware Found.\r\n");
         while(1);
     }

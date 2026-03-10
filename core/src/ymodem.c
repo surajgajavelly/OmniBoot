@@ -7,11 +7,14 @@
 
 /* Software CRC-16 CCITT (Polynomial 0x1021) 
  * Required because Hardware CRC unit is 32-bit only */
-uint16_t YMODEM_CalculateCRC(uint8_t *data, uint32_t len) {
+uint16_t YMODEM_CalculateCRC(uint8_t *data, uint32_t len)
+{
     uint16_t crc = 0;
-    while (len--) {
+    while (len--)
+    {
         crc ^= (uint16_t)*data++ << 8;
-        for (uint8_t i = 0; i < 8; i++) {
+        for (uint8_t i = 0; i < 8; i++)
+        {
             if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
             else crc <<= 1;
         }
@@ -20,7 +23,8 @@ uint16_t YMODEM_CalculateCRC(uint8_t *data, uint32_t len) {
 }
 
 /* Updated return type to uint32_t to report file size */
-uint32_t YMODEM_Receive(void) {
+uint32_t YMODEM_Receive(void)
+{
     uint8_t packet_data[1024 + 4]; 
     uint32_t current_address = APP_START_ADDRESS;
     uint32_t total_received_size = 0; // NEW: Track total bytes written
@@ -35,16 +39,19 @@ uint32_t YMODEM_Receive(void) {
     while (UART2_Read(10) != -1); 
     UART2_Write(0x43); // Initial 'C'
 
-    while (1) {
+    while (1)
+    {
         // Wait for start of packet (SOH, STX, EOT)
         int head = UART2_Read(3000); 
         
-        if (head == -1) { 
+        if (head == -1)
+        { 
             UART2_Write(0x43); // Timeout: Request again
             continue; 
         }
         
-        if (head == 0x04) { // EOT (End of Transmission)
+        if (head == 0x04)
+        { // EOT (End of Transmission)
             UART2_Write(0x06); // ACK EOT
             for(volatile int i = 0; i < 5000000; i++);
             return total_received_size; // SUCCESS: Return total bytes
@@ -54,40 +61,55 @@ uint32_t YMODEM_Receive(void) {
         
         // 3. Read Packet Body: [Num][Inv][Data...][CRC_H][CRC_L]
         uint8_t err = 0;
-        for (uint32_t i = 0; i < (data_size + 4); i++) {
+        for (uint32_t i = 0; i < (data_size + 4); i++)
+        {
             int c = UART2_Read(1000);
             if (c == -1) { err = 1; break; }
             packet_data[i] = (uint8_t)c;
         }
 
-        if (err) { 
+        if (err)
+        { 
             UART2_Write(0x15); // NAK: Request resend
             continue; 
         }
 
         // 4. Validate Packet Number Integrity
-        if ((uint8_t)(packet_data[0] + packet_data[1]) != 0xFF) {
+        if ((uint8_t)(packet_data[0] + packet_data[1]) != 0xFF)
+        {
             UART2_Write(0x15);
             continue;
         }
 
         // 5. Validate CRC-16
         uint16_t crc_received = (packet_data[data_size + 2] << 8) | packet_data[data_size + 3];
-        if (YMODEM_CalculateCRC(&packet_data[2], data_size) != crc_received) {
+
+        if (YMODEM_CalculateCRC(&packet_data[2], data_size) != crc_received)
+        {
             UART2_Write(0x15);
             continue;
         }
 
         // 6. PACKET 0 LOGIC (Header or End of Session)
-        if (packet_data[0] == 0) {
+        if (packet_data[0] == 0)
+        {
             // Check if data field is all zeros (Empty Packet 0 = End of Session)
             uint8_t is_empty = 1;
-            for(int i=2; i < 10; i++) { if(packet_data[i] != 0) is_empty = 0; }
+            for(int i=2; i < 10; i++)
+            {
+                if(packet_data[i] != 0)
+                {
+                    is_empty = 0;
+                }
+            }
 
-            if (is_empty) {
+            if (is_empty)
+            {
                 UART2_Write(0x06); // ACK end
                 return total_received_size; // Return size (will be 0 if only session end)
-            } else {
+            }
+            else
+            {
                 // Filename Packet 0 - Start of Session
                 UART2_Write(0x06); // ACK the header
                 
@@ -100,9 +122,9 @@ uint32_t YMODEM_Receive(void) {
                 continue;
             }
         } 
-        
         // 7. DATA PACKET LOGIC (Packet 1, 2, 3...)
-        else if (packet_data[0] == expected_pkt) {
+        else if (packet_data[0] == expected_pkt)
+        {
             Flash_Write(current_address, &packet_data[2], data_size);
             current_address += data_size;
             total_received_size += data_size; // NEW: Accumulate size
@@ -111,11 +133,13 @@ uint32_t YMODEM_Receive(void) {
             expected_pkt++;
             GPIO_Toggle(GPIOA, (1U << 5)); // Visual feedback on board
         } 
-        else if (packet_data[0] == (expected_pkt - 1)) {
+        else if (packet_data[0] == (expected_pkt - 1))
+        {
             // Duplicate packet (Sender missed our last ACK)
             UART2_Write(0x06);
         }
-        else {
+        else
+        {
             // Total out of sync
             UART2_Write(0x15);
         }
